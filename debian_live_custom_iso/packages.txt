@@ -1,0 +1,6 @@
+parted cryptsetup lvm2
+xen-system-amd64 qemu-system-x86
+bridge-utils vlan openvswitch-switch
+dropbear-run
+ntp
+mg
