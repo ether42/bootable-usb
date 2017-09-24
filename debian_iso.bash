@@ -61,7 +61,9 @@ EOF
     # initramfs hooks also complain about kbd & console-setup
     less mg tmux locales kbd console-setup
     # administration
-    rsyslog collectd-core tcpdump
+    rsyslog tcpdump
+    # collectd
+    collectd-core libpython2.7 python-lxc python-openvswitch sysstat libatasmart4 libsensors4
     # firmwares
     firmware-misc-nonfree firmware-realtek firmware-iwlwifi
   ) && apt-get install --no-install-recommends -y "${packages[@]}"
@@ -138,6 +140,94 @@ EOF
   # avoid dns configuration from chroot
   > /etc/resolv.conf
 
+  # collectd setup
+  mkdir -p /etc/collectd/collectd.conf.d
+  cat > /etc/collectd/collectd.conf << EOF
+FQDNLookup true
+TypesDB "/usr/share/collectd/types.db"
+Interval 10
+
+LoadPlugin syslog
+<Plugin syslog>
+  LogLevel info
+</Plugin>
+
+<Include "/etc/collectd/collectd.conf.d">
+  Filter "*.conf"
+</Include>
+EOF
+  cat > /etc/collectd/collectd.conf.d/load.conf << EOF
+LoadPlugin load
+<Plugin load>
+  ReportRelative false
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/cpu.conf << EOF
+LoadPlugin cpu
+<Plugin cpu>
+  ReportByCpu false
+  ReportByState true
+  ValuesPercentage true
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/smart.conf << EOF
+# may spam ata errors on the kernel log when used on virtual machines (VirtualBox & Hyper-V)
+LoadPlugin smart
+<Plugin smart>
+  # can't use /dev/sg* as collectd matches on the block subsystem
+  Disk "/^loop[[:digit:]]+$/"
+  IgnoreSelected true
+  UseSerial true
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/df.conf << EOF
+LoadPlugin df
+<Plugin df>
+  # ignore rootfs; else, the root file-system would appear twice, causing
+  # one of the updates to fail and spam the log
+  FSType rootfs
+  # ignore the usual virtual / temporary file-systems
+  FSType sysfs
+  FSType proc
+  FSType devtmpfs
+  FSType devpts
+  FSType tmpfs
+  FSType fusectl
+  FSType cgroup
+  FSType squashfs
+  IgnoreSelected true
+  ReportByDevice false
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/sensors.conf << EOF
+LoadPlugin sensors
+<Plugin sensors>
+  UseLabels true
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/memory.conf << EOF
+LoadPlugin memory
+<Plugin memory>
+  ValuesAbsolute true
+  ValuesPercentage false
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/swap.conf << EOF
+LoadPlugin swap
+<Plugin swap>
+  ReportByDevice false
+  ReportBytes true
+  ValuesAbsolute true
+  ValuesPercentage false
+</Plugin>
+EOF
+  cat > /etc/collectd/collectd.conf.d/network.conf << EOF
+LoadPlugin network
+<Plugin network>
+  Server "localhost"
+</Plugin>
+EOF
+
   # slim down & cleanup
   apt-get clean && rm -rf /var/lib/apt && rm -rf /var/cache/apt
   rm -rf /var/log/*
@@ -152,9 +242,9 @@ build_debian() { # debootstrap the debian, should maybe use live-build?
 
   local -ar packages=(
     # boot
-    # FIXME: strangely enough, linux-image-amd64=4.9+80 will make grub
+    # strangely enough, linux-image-amd64=4.9+80 will make grub
     # complain (error in its gzio module, it's fine with other kernels)
-    linux-image-rt-amd64 systemd-sysv
+    linux-image-amd64 systemd-sysv
     # networking
     ifupdown isc-dhcp-client
     # debian live scripts
@@ -166,7 +256,7 @@ build_debian() { # debootstrap the debian, should maybe use live-build?
     --merged-usr # use symlinks for most of root directories
     --include "${packages[*]}"
     --variant minbase
-    stretch "$chroot_directory"
+    buster "$chroot_directory"
   ) && "${debootstrap_command[@]}"
 
   # necessary mountpoints
@@ -185,13 +275,39 @@ build_debian() { # debootstrap the debian, should maybe use live-build?
   # copy the readme and wiki for easier reference and copy/paste
   cp "$script_directory"/README.md "$chroot_directory"/root/
   if hash git; then
-      git clone --depth 1 'https://github.com/ether42/bootable-usb.wiki.git' \
-        "$chroot_directory"/root/wiki
+    git clone --depth 1 'https://github.com/ether42/bootable-usb.wiki.git' \
+      "$chroot_directory"/root/wiki
+
+    # also copy some collectd scripts for iostat, LXC & Open vSwitch
+    git clone --depth 1 'https://gist.github.com/ether42/cd3de784821f631c49f3a4a814719734' \
+      "$chroot_directory"/etc/collectd/collectd.conf.d/python
+    cat > "$chroot_directory"/etc/collectd/collectd.conf.d/python.conf << EOF
+LoadPlugin python
+
+TypesDB "/etc/collectd/collectd.conf.d/python/lxc_ovs_plugin.db"
+TypesDB "/etc/collectd/collectd.conf.d/python/iostat_plugin.db"
+
+<Plugin python>
+  ModulePath "/etc/collectd/collectd.conf.d/python"
+  LogTraces true
+  Interactive false
+
+  Import "lxc_ovs_plugin"
+  # <Module lxc_ovs_plugin>
+  #   OVSDB "unix:/var/run/openvswitch/db.sock"
+  # </Module>
+
+  Import "iostat_plugin"
+  <Module iostat_plugin>
+    Interval 10
+  </Module>
+</Plugin>
+EOF
   fi
 
   # force cryptsetup into the initramfs
   sed -i 's/^#CRYPTSETUP=$/CRYPTSETUP=y/' \
-      "$chroot_directory"/etc/cryptsetup-initramfs/conf-hook
+    "$chroot_directory"/etc/cryptsetup-initramfs/conf-hook
   # regenerate the initramfs
   chroot "$chroot_directory" update-initramfs -u
 
