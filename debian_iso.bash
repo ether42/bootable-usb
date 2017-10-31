@@ -245,6 +245,9 @@ build_debian() { # debootstrap the debian, should maybe use live-build?
     # strangely enough, linux-image-amd64=4.9+80 will make grub
     # complain (error in its gzio module, it's fine with other kernels)
     linux-image-amd64 systemd-sysv
+    # the corresponding version may later be unavailable so it's better
+    # to grab the headers while we can (depends on gcc)
+    linux-headers-amd64
     # networking
     ifupdown isc-dhcp-client
     # debian live scripts
