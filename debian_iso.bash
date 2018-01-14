@@ -80,7 +80,7 @@ disable systemd-resolved.service
 disable systemd-networkd.*
 disable systemd-networkd-wait-online.service
 EOF
-  sed -i 's/#\(Storage=\)auto/\1none/' /etc/systemd/journald.conf # syslog only
+  sed -i 's/#\(Storage=\)auto/\1volatile/' /etc/systemd/journald.conf
   systemctl mask apt-daily{,-upgrade}.timer # not needed
   # FIXME: this user got removed?
   adduser --quiet --system --group --no-create-home --home /run/systemd \
