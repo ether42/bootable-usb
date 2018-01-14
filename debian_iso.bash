@@ -79,11 +79,14 @@ disable systemd-resolved.service
 # use debian's networking
 disable systemd-networkd.*
 disable systemd-networkd-wait-online.service
-# not needed FIXME: still triggered by something...
-disable apt-daily-upgrade.*
-disable apt-daily.*
 EOF
   sed -i 's/#\(Storage=\)auto/\1none/' /etc/systemd/journald.conf # syslog only
+  systemctl mask apt-daily{,-upgrade}.timer # not needed
+  # FIXME: this user got removed?
+  adduser --quiet --system --group --no-create-home --home /run/systemd \
+    --gecos 'systemd Time Synchronization' systemd-timesync
+  # FIXME: the LXC 'multi-user' is started due to the default setup...
+  sed -i '/WantedBy=multi-user.target/d' /lib/systemd/system/lxc@.service
 
   # ssh (dropbear-run provides SysV init script but isn't suited to our use)
   # the advantages being its small size and lazy generation of the host's keys
