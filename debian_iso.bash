@@ -259,7 +259,7 @@ build_debian() { # debootstrap the debian, should maybe use live-build?
     --merged-usr # use symlinks for most of root directories
     --include "${packages[*]}"
     --variant minbase
-    buster "$chroot_directory"
+    sid "$chroot_directory"
   ) && "${debootstrap_command[@]}"
 
   # necessary mountpoints
