@@ -1,0 +1,38 @@
+- name: configure systemd-journald
+  notify: restart systemd-journald
+  file:
+    dest: /etc/systemd/journald.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        [Journal]
+        Storage=volatile
+
+- name: create systemd presets
+  file:
+    path: /etc/systemd/system-preset
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+# should only be applied once and first
+# else it will disable everything that the other roles have enabled
+- name: configure systemd presets
+  notify: apply systemd presets
+  copy:
+    dest: /etc/systemd/system-preset/00-override.preset
+    mode: 0644
+    owner: root
+    group: root
+    # systemd-resolved: use libc instead
+    # systemd-networkd: use debian's networking instead
+    # systemd-timesyncd: actually useful to avoid an ntp
+    content: |
+        enable getty@.service
+        enable networking.service
+        enable systemd-timesyncd.service
+        disable *
+
+- meta: flush_handlers

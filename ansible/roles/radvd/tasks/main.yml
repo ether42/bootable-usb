@@ -1,0 +1,48 @@
+- assert:
+    msg: radvd must be a dictionary
+    that: radvd is defined and radvd is mapping
+
+- name: install radvd
+  apt:
+    name: radvd
+    state: latest
+
+- name: copy radvd.conf
+  notify: restart radvd
+  template:
+    src: radvd.conf.j2
+    dest: /etc/radvd.conf
+    mode: 0644
+    owner: root
+    group: root
+    validate: radvd --configtest --config %s
+
+- name: enable radvd
+  notify: restart radvd
+  service:
+    name: radvd
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+# copy/paste in ovh
+# it's safe to allow forwarding by default since the firewall
+# is configured to drop everything unless otherwise stated
+# https://www.kernel.org/doc/Documentation/networking/ip-sysctl.txt
+# note that forwarding for ipv6 is different than ipv4
+# and netfilter should be used to restrain which interface
+# is allowed to forward to others
+# only setting net.ipv6.conf.$interface.forwarding won't work
+- name: setup sysctl ipv6 forwarding
+  sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: 1
+    sysctl_file: /etc/sysctl.d/radvd.conf
+
+# so we can attribute ip to ourself
+- name: setup sysctl accept_ra for declared interfaces
+  sysctl:
+    name: net.ipv6.conf.{{ item }}.accept_ra
+    value: 2
+    sysctl_file: /etc/sysctl.d/radvd.conf
+  with_items: "{{ radvd | list }}"

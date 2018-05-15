@@ -1,0 +1,17 @@
+- name: restart {{ name }}
+  lxc_container:
+    name: "{{ name }}"
+    state: restarted
+  no_log: true
+
+- name: "prepare {{ name }} for ansible: copy ssh public keys"
+  command: lxc-attach -n {{ name | quote }} -- sh -c 'mkdir -p /root/.ssh && tee /root/.ssh/authorized_keys'
+  args:
+    stdin: "{{ ssh_agent_public_keys.stdout }}"
+  no_log: true
+
+- name: "prepare {{ name }} for ansible: install python"
+  lxc_container:
+    name: "{{ name }}"
+    container_command: apt-get -y install python
+  no_log: true

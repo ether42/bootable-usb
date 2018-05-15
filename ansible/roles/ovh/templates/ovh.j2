@@ -1,0 +1,42 @@
+plugin rp-pppoe.so {{ ovh_ppp_interface }}
+
+user {{ ovh_ppp_user }}
+
+# allow ipv6
++ipv6
+
+# don't ask them to authenticate
+# https://ppp.samba.org/FAQ.html
+noauth
+
+# default, don't log password from PAP packets
+hide-password
+
+# indefinitely retry to reopen the connection every 5 seconds
+# once it has been lost
+persist
+maxfail 0
+holdoff 5
+
+# FIXME: to be re-verified
+# PPP protocol have an overhead of 8 bytes so lower M[RT]U
+mtu 1492
+mru 1492
+
+default-asyncmap
+
+noipdefault
+
+# add a default route to the system
+defaultroute
+replacedefaultroute
+
+# check if peer is alive
+lcp-echo-interval 10
+lcp-echo-failure 5
+
+# detch once we are done
+updetach
+# uncomment the following and comment the previous one for debugging purposes
+# nodetach
+# debug

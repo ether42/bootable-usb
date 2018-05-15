@@ -1,0 +1,8 @@
+auto {{ hostapd_bridged_interface }}
+iface {{ hostapd_bridged_interface }} inet manual
+
+auto {{ hostapd_bridge }}
+iface {{ hostapd_bridge }} inet manual
+  bridge_ports {{ hostapd_bridged_interface }}
+  up ip link set dev {{ hostapd_bridge }} up
+  down ip link set dev {{ hostapd_bridge }} down

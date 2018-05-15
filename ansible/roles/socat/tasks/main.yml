@@ -1,0 +1,4 @@
+- name: install socat
+  apt:
+    name: socat
+    state: latest

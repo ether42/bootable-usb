@@ -1,0 +1,5 @@
+dependencies:
+  - role: firewall
+  - role: rsyslog-client
+    # avoid forwarding to itself
+    rsyslog_servers: null

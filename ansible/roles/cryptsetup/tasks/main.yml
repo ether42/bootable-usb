@@ -1,0 +1,52 @@
+- include_tasks: keyboard_configuration.yml
+  with_items:
+    - { subquestion: layout, vtype: select, value: English (US) }
+    - { subquestion: variant, vtype: select, value: English (US) - English (US, alternative international) }
+    - { subquestion: variantcode, vtype: string, value: alt-intl }
+  loop_control:
+    loop_var: answer
+
+- include_tasks: locales.yml
+  with_items:
+    - { subquestion: default_environment_locale, vtype: select, value: en_US.UTF-8 }
+    - { subquestion: locales_to_be_generated, vtype: multiselect, value: en_US.UTF-8 UTF-8 }
+  loop_control:
+    loop_var: answer
+
+- name: install cryptsetup dependencies
+  apt:
+    name:
+      - console-setup
+      - cryptsetup
+      - kbd
+      - locales
+    state: latest
+    install_recommends: false
+
+- include_tasks: console_setup.yml
+  with_items:
+    - { subquestion: charmap47, vtype: select, value: UTF-8 }
+    - { subquestion: fontface47, vtype: select, value: Terminus }
+    - { subquestion: fontsize-fb47, vtype: select, value: 8x14 }
+    - { subquestion: fontsize-text47, vtype: select, value: 8x14 }
+    # this one is so pernicious
+    # (it will purge on installation and on reconfiguration...)
+    - { subquestion: store_defaults_in_debconf_db, vtype: boolean, value: false }
+  loop_control:
+    loop_var: answer
+
+# force modified values
+- name: dpkg-reconfigure console-setup
+  command: dpkg-reconfigure -f noninteractive console-setup
+  when: console_setup_debconf.changed
+
+- name: enable cryptsetup in the initramfs
+  lineinfile:
+    path: /etc/cryptsetup-initramfs/conf-hook
+    regexp: '^#CRYPTSETUP=$'
+    line: 'CRYPTSETUP=y'
+  register: cryptsetup_initramfs
+
+- name: update-initramfs
+  command: update-initramfs -u
+  when: cryptsetup_initramfs.changed

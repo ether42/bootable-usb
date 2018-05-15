@@ -1,0 +1,3 @@
+dependencies:
+  # for ssh-add
+  - role: openssh-client

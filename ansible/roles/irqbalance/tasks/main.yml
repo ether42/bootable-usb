@@ -1,0 +1,10 @@
+- name: install irqbalance
+  apt:
+    name: irqbalance
+    state: latest
+
+- name: enable irqbalance
+  systemd:
+    name: irqbalance
+    enabled: true
+    masked: false

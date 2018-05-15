@@ -1,0 +1,6 @@
+hostapd_bridge: bridge-{{ hostapd_bridged_interface }}
+hostapd_channel: 1
+hostapd_country_code: FR
+hostapd_hw_mode: g
+hostapd_ssid: SSID
+hostapd_wpa_passphrase: "{{ vault_hostapd_wpa_passphrase }}"

@@ -1,0 +1,139 @@
+# there is probably no need to quote the ovh_*_* variables
+
+- assert:
+    msg: ovh_*_interface must be defined
+    that:
+      - ovh_ppp_interface is defined
+      - ovh_interconnection_interface is defined
+
+- name: install ovh dependencies
+  apt:
+    name:
+      - dhcpcd5
+      - ppp
+    state: latest
+
+- name: enable dhcpcd
+  systemd:
+    name: dhcpcd
+    enabled: true
+    masked: false
+
+- name: configure dhcpcd
+  notify: restart dhcpcd
+  template:
+    src: dhcpcd.conf.j2
+    dest: /etc/dhcpcd.conf
+    mode: 0644
+    owner: root
+    group: root
+  no_log: true
+
+# don't need that one
+- name: disable pppd-dns
+  systemd:
+    name: pppd-dns
+    enabled: false
+    masked: true
+
+- name: configure ipv4 forwarding on ppp interface up
+  copy:
+    dest: /etc/ppp/ip-up.d/forwarding
+    mode: 0755
+    owner: root
+    group: root
+    content: |
+        #!/usr/bin/env bash
+
+        set -eux
+
+        sysctl -w net.ipv4.conf."$1".forwarding=1
+
+- name: configure ipv6 forwarding on ppp interface up
+  copy:
+    dest: /etc/ppp/ipv6-up.d/forwarding
+    mode: 0755
+    owner: root
+    group: root
+    content: |
+        #!/usr/bin/env bash
+
+        set -eux
+
+        # 1 is overriden by forwarding
+        sysctl -w net.ipv6.conf."$1".accept_ra=2
+        # copy/paste in radvd
+        # it's safe to allow forwarding by default since the firewall
+        # is configured to drop everything unless otherwise stated
+        # https://www.kernel.org/doc/Documentation/networking/ip-sysctl.txt
+        # note that forwarding for ipv6 is different than ipv4
+        # and netfilter should be used to restrain which interface
+        # is allowed to forward to others
+        # only setting net.ipv6.conf.$interface.forwarding won't work
+        sysctl -w net.ipv6.conf.all.forwarding=1
+
+- name: configure ovh ppp peer
+  template:
+    src: ovh.j2
+    dest: /etc/ppp/peers/ovh
+    mode: 0644
+    owner: root
+    group: root
+  no_log: true
+
+- name: setup ovh ppp secrets
+  lineinfile:
+    path: "{{ item }}"
+    line: "{{ ovh_ppp_user }} * {{ ovh_ppp_password }} *"
+    regexp: "^{{ ovh_ppp_user }} "
+  no_log: true
+  with_items:
+    - /etc/ppp/pap-secrets
+    - /etc/ppp/chap-secrets
+
+# FIXME: copy/paste from hostapd
+- name: create /etc/network/interfaces.d
+  file:
+    path: /etc/network/interfaces.d
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: /etc/network/interfaces should source /etc/network/interfaces.d
+  lineinfile:
+    path: /etc/network/interfaces
+    line: source-directory /etc/network/interfaces.d
+    insertbefore: BOF
+    regexp: '^source-directory /etc/network/interfaces\.d$'
+    state: present
+
+- name: configure {{ ovh_ppp_interface }} interface
+  template:
+    src: interface.j2
+    dest: /etc/network/interfaces.d/{{ ovh_ppp_interface }}
+    mode: 0644
+    owner: root
+    group: root
+
+- name: allow dhcpv6 on {{ ovh_interconnection_interface }}
+  notify: restart ferm
+  copy:
+    dest: /etc/ferm/filter/input/00-dhcpcd.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        @if @eq($DOMAIN, ip6) {
+          interface ppp0 proto (tcp udp) dport dhcpv6-client ACCEPT;
+        }
+
+- name: clamp mss to path mtu
+  notify: restart ferm
+  copy:
+    dest: /etc/ferm/filter/forward/00-ppp.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        outerface ppp0 proto tcp tcp-flags (SYN RST) SYN TCPMSS clamp-mss-to-pmtu;

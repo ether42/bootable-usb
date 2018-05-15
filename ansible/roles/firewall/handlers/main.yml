@@ -1,0 +1,13 @@
+- name: restart ferm
+  listen: restart firewall
+  systemd:
+    name: ferm
+    state: restarted
+  when: restart_services | default(True)
+
+- name: restart ulogd2
+  listen: restart firewall
+  systemd:
+    name: ulogd2
+    state: restarted
+  when: restart_services | default(True)

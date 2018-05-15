@@ -1,0 +1,38 @@
+{% for interface, options in radvd.items() %}
+interface {{ interface }} {
+{% for option, value in options.items() %}
+
+{% if option in ('prefixes', 'routes') %}
+{% for subnet in (value | list | ipv6('net')) %}
+  {{ {'prefixes': 'prefix', 'routes': 'route'}[option] }} {{ subnet }} {
+{% for option, value in value[subnet].items() %}
+    {{ option }} {{ value }};
+{% endfor %}
+  };
+{% endfor %}
+
+{% elif option == 'clients' %}
+  clients {
+{% for client in value | ipv6('address') %}
+    {{ client }};
+{% endfor %}
+  };
+
+{% elif option == 'rdnss' %}
+  RDNSS {{ ' '.join(value | ipv6('address')) }} {
+{# FIXME: RDNSS options #}
+  };
+
+{% elif option == 'dnssl' %}
+  DNSSL {{ ' '.join(value) }} {
+{# FIXME: DNSSL options #}
+  };
+
+{% else %}
+  {{ option }} {{ value }};
+{% endif %}
+
+{% endfor %}
+};
+
+{% endfor %}

@@ -1,0 +1,23 @@
+- name: install bind9
+  apt:
+    name: bind9
+    state: latest
+    install_recommends: false
+
+- name: enable bind9
+  notify: restart bind9
+  service:
+    name: bind9
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+- name: allow domain firewall
+  notify: restart ferm
+  copy:
+    dest: /etc/ferm/filter/input/00-bind9.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        proto (tcp udp) dport domain ACCEPT;

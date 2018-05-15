@@ -1,0 +1,5 @@
+- name: restart rdnssd
+  systemd:
+    name: rdnssd
+    state: restarted
+  when: restart_services | default(True)

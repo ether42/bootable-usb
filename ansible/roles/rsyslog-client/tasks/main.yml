@@ -1,0 +1,69 @@
+# FIXME:
+# rsyslog.service (alias=syslog.service) requires syslog.socket
+# and syslog.socket requires syslog.service
+# unfortunately, it's still not enabled before the post-install
+# script kicks-in...
+- name: symlink syslog.service to properly install rsyslog
+  file:
+    src: /lib/systemd/system/rsyslog.service
+    dest: /etc/systemd/system/syslog.service
+    state: link
+    force: yes
+
+- name: install rsyslog dependencies
+  apt:
+    name:
+      - rsyslog
+      - logrotate
+    state: latest
+    install_recommends: false
+
+- name: fetch rsyslog version
+  command: dpkg-query --showformat='${Version}' --show rsyslog
+  register: rsyslog_version
+
+- assert:
+    msg: rsyslog 8.25+ is required for parser.permitSlashInProgramName
+    that: "{{ rsyslog_version.stdout is version('8.25', '>=') }}"
+  # avoid annoying crash when using --check
+  when: "'stdout' in rsyslog_version"
+
+- name: "configure rsyslogd: remove rules and specify custom settings"
+  notify: restart rsyslog
+  replace:
+    path: /etc/rsyslog.conf
+    # https://github.com/ansible/ansible/issues/31354
+    before: '#### RULES ####\n###############\n\n'
+    after: '\n#\n# Emergencies are sent to everybody logged in\.'
+    regexp: '^(.|\n)+$'
+    mode: 0644
+    owner: root
+    group: root
+    replace: |
+        # no file-based rule configured because everything should be forwarded
+
+        global(parser.permitSlashInProgramName="on")
+
+- name: "configure rsyslogd: enable forwarding"
+  notify: restart rsyslog
+  template:
+    src: forward.conf.j2
+    dest: /etc/rsyslog.d/forward.conf
+    mode: 0644
+    owner: root
+    group: root
+  when: rsyslog_servers is defined and rsyslog_servers != None
+
+- name: "configure rsyslogd: disable forwarding"
+  notify: restart rsyslog
+  file:
+    path: /etc/rsyslog.d/forward.conf
+    state: absent
+  when: rsyslog_servers is not defined or rsyslog_servers == None
+
+# FIXME: neither service nor systemd works properly when creating the image
+- name: enable rsyslog
+  # notify: restart rsyslog
+  command: systemctl enable rsyslog
+  args:
+    creates: /etc/systemd/system/multi-user.target.wants/rsyslog.service

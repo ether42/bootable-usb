@@ -1,0 +1,102 @@
+- name: install lxc dependencies
+  apt:
+    name:
+      - debootstrap
+      - lvm2
+      - lxc
+      - openvswitch-switch
+      - parted
+      - rsync
+      # required for lxc.network.type = phys
+      - iw
+      # ansible
+      - python-lxc
+    state: latest
+    install_recommends: false
+
+- name: enable lxc
+  service:
+    name: lxc
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+- name: dump ssh-agent public keys so they can be installed into the lxc
+  command: ssh-add -L
+  register: ssh_agent_public_keys
+
+- name: lxc volume group must exist
+  shell: vgs lxc
+  when: lxc
+
+- name: "disable apparmor: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=880502"
+  lineinfile:
+    path: /usr/share/lxc/config/common.conf.d/apparmor.conf
+    line: lxc.aa_profile = unconfined
+    create: yes
+
+- name: "disable default: lxc.network.type = empty"
+  file:
+    path: /etc/lxc/default.conf
+    state: absent
+
+- name: create lxc partitions
+  lvol:
+    vg: lxc
+    lv: "{{ item.key }}"
+    size: "{{ item.value }}"
+  with_dict: "{{ lxc_partitions }}"
+
+- name: format lxc partitions
+  filesystem:
+    fstype: ext4
+    opts: -L {{ item.key }}
+    dev: "/dev/lxc/{{ item.key }}"
+  with_dict: "{{ lxc_partitions }}"
+
+- name: create lxc containers
+  lxc_container:
+    name: "{{ item.key }}"
+    state: started
+    backing_store: lvm
+    vg_name: lxc
+    fs_size: "{{ item.value.fs_size | default('1G') }}"
+    fs_type: ext4
+    template: debian
+    template_options: "{{ item.value.template | default('-r buster') }}"
+    container_config: "{{ container_config + (item.value.container_config | default([])) }}"
+  vars:
+    container_config:
+      - lxc.start.auto = 1
+  with_dict: "{{ lxc }}"
+  register: lxc_changed
+
+- include_tasks: setup.yml name={{ item.item.key }}
+  no_log: true
+  when: item.changed
+  with_items: "{{ lxc_changed.results }}"
+
+- name: copy ovs bridge helper
+  copy:
+    dest: /etc/lxc/ovs_bridge_up.sh
+    mode: 0755
+    owner: root
+    group: root
+    content: |
+        #!/bin/sh -eu
+
+        [ $# -eq 6 ]
+        ovs-vsctl --if-exists del-port "$1" "$6"
+        ovs-vsctl --may-exist add-port "$1" "$6"
+
+- name: copy ovs bridge helper
+  copy:
+    dest: /etc/lxc/ovs_bridge_down.sh
+    mode: 0755
+    owner: root
+    group: root
+    content: |
+        #!/bin/sh -eu
+
+        [ $# -eq 6 ]
+        ovs-vsctl --if-exists del-port "$1" "$6"

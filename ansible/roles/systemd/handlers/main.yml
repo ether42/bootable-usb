@@ -1,0 +1,8 @@
+- name: apply systemd presets
+  command: systemctl preset-all
+
+- name: restart systemd-journald
+  systemd:
+    name: systemd-journald
+    state: restarted
+  when: restart_services | default(True)

@@ -1,12 +1,15 @@
-# --- dependencies ------------------------------------------------------------
+# --- dependencies -------------------------------------------------------------
 
+hash mktemp
+hash rm
 hash tac
 
-# --- functions ---------------------------------------------------------------
+# --- cleanup ------------------------------------------------------------------
 
-declare -r cleanup_script=$(mktemp)
+declare -r cleanup_script=$(mktemp cleanup.XXXXXXXXXX)
 
 cleanup_register() {
+  # register a simple cleanup command
   { printf -- '%q ' "$@"
     printf -- '>& /dev/null \n'
   } >> "$cleanup_script"
@@ -14,11 +17,11 @@ cleanup_register() {
 declare -rf cleanup_register
 
 cleanup() {
+  # cleanup hook
   local -r code=$?
-  tac "$cleanup_script" | "$SHELL" || true
+  tac "$cleanup_script" | "$SHELL" -x || true
   rm "$cleanup_script"
   exit $code
 }
 declare -rf cleanup
 trap cleanup EXIT
-trap cleanup INT

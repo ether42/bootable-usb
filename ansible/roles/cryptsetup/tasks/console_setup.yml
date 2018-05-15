@@ -1,0 +1,7 @@
+- name: setup console-setup ({{ answer.subquestion }})
+  debconf:
+    name: console-setup
+    question: console-setup/{{ answer.subquestion }}
+    vtype: "{{ answer.vtype }}"
+    value: "{{ answer.value }}"
+  register: console_setup_debconf

@@ -1,0 +1,9 @@
+- name: setup keyboard-configuration ({{ answer.subquestion }})
+  debconf:
+    name: "{{ item }}"
+    question: keyboard-configuration/{{ answer.subquestion }}
+    vtype: "{{ answer.vtype }}"
+    value: "{{ answer.value }}"
+  with_items:
+    - d-i
+    - keyboard-configuration

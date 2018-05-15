@@ -1,0 +1,89 @@
+- assert:
+    msg: tayga_ipv6_address must be defined
+    that: tayga_ipv6_address is defined
+
+- name: install tayga
+  apt:
+    name: tayga
+    state: latest
+
+- name: setup tayga
+  notify: restart tayga
+  template:
+    src: tayga.conf.j2
+    dest: /etc/tayga.conf
+    mode: 0644
+    owner: root
+    group: root
+
+- name: configure tayga ipv4 address
+  notify: restart tayga
+  lineinfile:
+    path: /etc/default/tayga
+    line: IPV4_TUN_ADDR="{{ tayga_ipv4_address }}"
+    regexp: '^IPV4_TUN_ADDR='
+    state: present
+
+- name: configure tayga ipv6 address
+  notify: restart tayga
+  lineinfile:
+    path: /etc/default/tayga
+    line: IPV6_TUN_ADDR="{{ tayga_ipv6_address }}"
+    regexp: '^IPV6_TUN_ADDR='
+    state: present
+
+- name: enable tayga
+  notify: restart tayga
+  lineinfile:
+    path: /etc/default/tayga
+    line: RUN="yes"
+    regexp: '^RUN='
+    state: present
+
+# copy/paste in radvd
+# it's safe to allow forwarding by default since the firewall
+# is configured to drop everything unless otherwise stated
+# https://www.kernel.org/doc/Documentation/networking/ip-sysctl.txt
+# note that forwarding for ipv6 is different than ipv4
+# and netfilter should be used to restrain which interface
+# is allowed to forward to others
+# only setting net.ipv6.conf.$interface.forwarding won't work
+- name: setup sysctl ipv6 forwarding
+  sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: 1
+    sysctl_file: /etc/sysctl.d/tayga.conf
+
+- name: create /etc/systemd/system/tayga.service.d
+  file:
+    path: /etc/systemd/system/tayga.service.d
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+# even if /etc/init.d/tayga does most of the job, it fails to enable forwarding
+- name: override tayga.service to enable forwarding on nat64
+  notify: restart tayga
+  copy:
+    dest: /etc/systemd/system/tayga.service.d/override.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+      [Unit]
+      # ferm will reset iptables but /etc/init.d/tayga will add some
+      # so be explicit about the dependency
+      BindsTo=ferm.service
+      After=ferm.service
+
+      [Service]
+      ExecStartPost=/sbin/sysctl -w net.ipv4.conf.nat64.forwarding=1
+
+- name: enable tayga
+  notify: restart tayga
+  systemd:
+    name: tayga
+    enabled: true
+    masked: false
+    daemon_reload: true

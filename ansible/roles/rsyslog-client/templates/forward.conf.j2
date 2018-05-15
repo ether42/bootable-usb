@@ -1,0 +1,4 @@
+# don't use tcp (@@) unless you want to make the machine unusable on problems
+{% for rsyslog_server in rsyslog_servers %}
+*.* @{{ rsyslog_server }}
+{% endfor %}

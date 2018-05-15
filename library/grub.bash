@@ -1,16 +1,21 @@
-# --- dependencies ------------------------------------------------------------
+# error: unsupported gzip format
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=869771
 
-declare -r grub_i386_pc_lib=/usr/lib/grub/i386-pc/ &&
+# --- dependencies -------------------------------------------------------------
+
+# grub-{pc,efi-amd64}-bin
+readonly grub_i386_pc_lib=/usr/lib/grub/i386-pc/ &&
   [ -d "$grub_i386_pc_lib" ]
-declare -r grub_x86_64_efi_lib=/usr/lib/grub/x86_64-efi/ &&
+readonly grub_x86_64_efi_lib=/usr/lib/grub/x86_64-efi/ &&
   [ -d "$grub_x86_64_efi_lib" ]
-declare -r grub_share=/usr/share/grub && [ -d "$grub_share" ]
+readonly grub_share=/usr/share/grub &&
+  [ -d "$grub_share" ]
 
-# --- functions ---------------------------------------------------------------
+# --- grub ---------------------------------------------------------------------
 
-grub_config_base() { # grub configuration header
+grub_configuration_header() {
   local file
-  read -r file < <(temporary_file)
+  read -r file < <(temporary_file grub_config.XXXXXXXXXX)
   cat > "$file" << EOF
 insmod all_video
 
@@ -19,11 +24,11 @@ serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
 EOF
   printf -- '%s\n' "$file"
 }
-declare -rf grub_config_base
+declare -rf grub_configuration_header
 
-grub_config_debian_live() { # grub configuration for debian live
+grub_configuration_debian_live() {
   local file
-  read -r file < <(temporary_file)
+  read -r file < <(temporary_file grub_config.XXXXXXXXXX)
   cat > "$file" << EOF
 submenu 'Debian Live' {
 EOF
@@ -76,4 +81,4 @@ EOF
 
   printf -- '%s\n' "$file"
 }
-declare -rf grub_config_debian_live
+declare -rf grub_configuration_debian_live

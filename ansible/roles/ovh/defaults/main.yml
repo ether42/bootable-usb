@@ -1,0 +1,2 @@
+ovh_ppp_user: "{{ vault_ovh_ppp_user }}"
+ovh_ppp_password: "{{ vault_ovh_ppp_password }}"

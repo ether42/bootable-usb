@@ -1,0 +1,54 @@
+- name: install openssh-server
+  apt:
+    name: openssh-server
+    state: latest
+
+- name: enable ssh
+  notify: restart ssh
+  service:
+    name: ssh
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+- name: configure ssh
+  notify: restart ssh
+  copy:
+    dest: /etc/ssh/sshd_config
+    # can't be run in a chroot
+    # validate: sshd -t -f %s
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        Subsystem sftp /usr/lib/openssh/sftp-server
+        # every failure will be logged (each method from the user counts as a try)
+        MaxAuthTries 1
+        # information leakage
+        Banner none
+        DebianBanner no
+        # possibly time consuming
+        UseDNS no
+        # default values (some from Debian), for explicitness
+        # AcceptEnv LANG LC_*
+        PermitRootLogin prohibit-password
+        PrintMotd no
+        UsePAM yes
+        # logging
+        SyslogFacility AUTH
+        LogLevel INFO
+
+- name: allow ssh firewall
+  notify: restart ferm
+  copy:
+    dest: /etc/ferm/filter/input/00-ssh.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        proto tcp dport ssh ACCEPT;
+
+# probably not perfect but we should flush the ferm handler as soon
+# as possible or there may be a chance to block the access until reboot
+# if the playbook crashes
+- meta: flush_handlers

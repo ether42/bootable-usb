@@ -1,0 +1,31 @@
+- name: "configure rsyslogd: listen and log destination"
+  notify: restart rsyslog
+  copy:
+    dest: /etc/rsyslog.d/receive.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        module(load="imudp")
+        input(type="imudp" port="514")
+
+        template(name="receive" type="string" string="/var/log/receive/%hostname%/%programname:::secpath-replace,lowercase%.log")
+        *.* ?receive
+
+- name: configure logrotate
+  template:
+    src: receive.j2
+    dest: /etc/logrotate.d/receive
+    mode: 0644
+    owner: root
+    group: root
+
+- name: allow syslog firewall
+  notify: restart ferm
+  copy:
+    dest: /etc/ferm/filter/input/00-bind9.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        proto udp dport syslog ACCEPT;

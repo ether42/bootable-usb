@@ -1,0 +1,5 @@
+- name: restart radvd
+  systemd:
+    name: radvd
+    state: restarted
+  when: restart_services | default(True)

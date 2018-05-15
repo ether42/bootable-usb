@@ -1,0 +1,31 @@
+- name: install rdnssd
+  apt:
+    name: rdnssd
+    state: latest
+    install_recommends: false
+
+- name: enable rdnssd
+  notify: restart rdnssd
+  service:
+    name: rdnssd
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+- name: overwrite /etc/rdnssd/merge-hook
+  when: rdnssd_only_ipv6 is defined and rdnssd_only_ipv6
+  copy:
+    dest: /etc/rdnssd/merge-hook
+    mode: 0755
+    owner: root
+    group: root
+    content: |
+        #!/usr/bin/env bash
+
+        set -eux
+
+        # by default this script ignores DNSSL and tries it best
+        # to handle stuff from a possible DHCP
+        # however, we don't care much and prefer IPv6 autoconfiguration
+
+        ln -sf /var/run/rdnssd/resolv.conf /etc/resolv.conf

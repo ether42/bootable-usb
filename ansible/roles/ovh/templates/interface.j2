@@ -1,0 +1,8 @@
+auto {{ ovh_ppp_interface }}
+iface {{ ovh_ppp_interface }} inet ppp
+  # /etc/ppp/peers/$provider
+  provider ovh
+
+  # up the corresponding interface
+  pre-up ip link set dev {{ ovh_ppp_interface }} up
+  post-down ip link set dev {{ ovh_ppp_interface }} down

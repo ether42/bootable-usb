@@ -1,0 +1,6 @@
+- name: setup locales ({{ answer.subquestion }})
+  debconf:
+    name: locales
+    question: locales/{{ answer.subquestion }}
+    vtype: "{{ answer.vtype }}"
+    value: "{{ answer.value }}"

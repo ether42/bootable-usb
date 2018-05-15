@@ -1,0 +1,12 @@
+/var/log/receive/*/*.log
+{
+  rotate {{ rsyslog_server_rotate }}
+  size 10M
+  daily
+  missingok
+  notifempty
+  compress
+  postrotate
+    invoke-rc.d rsyslog rotate > /dev/null
+  endscript
+}

@@ -1,0 +1,13 @@
+- hosts: all
+  connection: chroot
+  roles:
+    - systemd
+    - cryptsetup
+    - irqbalance
+    - lxc
+    - openssh-server
+    - rdnssd
+    - rsyslog-client
+    - socat
+  vars:
+    restart_services: false

@@ -1,0 +1,44 @@
+duid
+
+# Persist interface configuration when dhcpcd exits.
+persistent
+
+# Rapid commit support.
+# Safe to enable by default because it requires the equivalent option set
+# on the server to actually work.
+option rapid_commit
+
+# A list of options to request from the DHCP server.
+option classless_static_routes
+# Respect the network MTU. This is applied to DHCP routes.
+option interface_mtu
+
+# A ServerID is required by RFC2131.
+require dhcp_server_identifier
+
+# Generate Stable Private IPv6 Addresses instead of hardware based ones
+# slaac private
+# actually, I prefer to get a stable address because dhcpcd will disable
+# autoconfiguration and as such overwrite the known link local address
+# the MAC address should have been generated anyway
+slaac hwaddr
+
+# only manage these interfaces
+allowinterfaces ppp0 {{ ovh_interconnection_interface }}
+
+# disable IPv6 Router Advertisements (unless explicitely enabled)
+noipv6rs
+
+interface {{ ovh_interconnection_interface }}
+  # only manage IPv6 on the interconnection interface
+  ipv6only
+
+interface ppp0
+  # only manage IPv6 on the ppp0 interface
+  ipv6only
+  # enable IPv6 Router Advertisements
+  ipv6rs
+  # DHCPv6 server does not support OPTION_PD_EXCLUDE
+  # so you can't assign the prefix to the requesting interface
+  # request the /56 to be delivered on this interface
+  ia_pd 0 {{ ovh_interconnection_interface }}/0

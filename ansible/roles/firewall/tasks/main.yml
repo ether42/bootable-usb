@@ -1,0 +1,61 @@
+- name: make ferm directories
+  file:
+    path: /etc/{{ item }}
+    state: directory
+    # defaults
+    mode: 02750
+    owner: root
+    group: adm
+  with_items:
+    - ferm
+    - ferm/ferm.d
+    - ferm/filter/forward
+    - ferm/filter/input
+    - ferm/filter/output
+
+- name: copy ferm.conf
+  notify: restart ferm
+  copy:
+    src: ferm.conf
+    dest: /etc/ferm/ferm.conf
+    # defaults
+    mode: 0644
+    owner: root
+    group: adm
+
+- name: copy 99-ferm.conf
+  notify: restart ferm
+  copy:
+    src: 99-ferm.conf
+    dest: /etc/ferm/ferm.d/99-ferm.conf
+    # defaults
+    mode: 0644
+    owner: root
+    group: root
+
+- name: install firewall dependencies
+  apt:
+    name:
+      - ferm
+      - ulogd2
+    install_recommends: false
+
+- name: copy ulogd.conf
+  notify: restart ulogd2
+  copy:
+    src: ulogd.conf
+    dest: /etc/ulogd.conf
+    mode: 0644
+    owner: root
+    group: root
+
+- name: enable firewall services
+  notify: restart firewall
+  service:
+    name: "{{ item }}"
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+  with_items:
+    - ferm
+    - ulogd2

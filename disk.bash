@@ -1,79 +1,85 @@
 #!/usr/bin/env bash
 
-declare -r script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null \
-  && pwd)
+readonly script_directory=$(
+  cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null && pwd)
 . "$script_directory"/library/source.bash
 
-# --- dependencies ------------------------------------------------------------
+# --- dependencies -------------------------------------------------------------
 
 hash cryptsetup
 hash grub-install
 hash lsblk
 hash parted
-hash partprobe
+hash parted partprobe
 hash sha256sum
 hash tar
 hash truncate
+hash udevadm
+hash wget
 
-# --- steps -------------------------------------------------------------------
+# --- build --------------------------------------------------------------------
 
-format_disk() { # 1GiB required by default, output each partition's path
-  local -r efi_end=$((${SIZE:-1021} + 1+1)) # 1023MiB
-  # gpt disk
+format() {
+  # 1GiB required by default, output all partitions
+  #  - bios_grub
+  #  - efi
+  local -r end=$((${SIZE:-1021} + 1 + 1)) # 1023MiB
   parted --script "$1" mklabel gpt
   # grub's partition for bios machines (1MiB start alignment, 1MiB size)
   parted --script --align optimal "$1" mkpart GRUB 1MiB 2MiB
   parted --script "$1" set 1 bios_grub on
-  # efi/data partition
-  parted --script --align optimal "$1" mkpart ESP fat32 2MiB "$efi_end"MiB
+  # efi & data partition
+  parted --script --align optimal "$1" mkpart ESP fat32 2MiB "$end"MiB
 
-  # wait for partitions to appear
-  partprobe
-  if hash udevadm >& /dev/null; then
-    udevadm settle
-  fi
+  # wait for partitions
+  partprobe || true # may fail with read-only mounted stuff
+  udevadm settle
 
-  lsblk -n -r -o PARTUUID "$1" |
+  # skip empty line
+  lsblk --noheadings --raw --output PARTUUID "$1" |
     sed -n 's#^\(.\+\)$#/dev/disk/by-partuuid/\1#p'
 }
-declare -rf format_disk
+declare -rf format
 
-install_grub() {
+grub() {
+  # install grub to a disk output its configuration path
   local -r boot_prefix=/boot/
   local -r grub_prefix=${boot_prefix}grub/
   local -r boot_directory=$2/$boot_prefix
   local -r grub_directory=$2/$grub_prefix
-  local -ar grub_install_command=(
+
+  local -ar grub_install=(
     grub-install
     --boot-directory "$boot_directory"
     --locales '' # won't match
   )
   # bios
-  local -ar grub_install_bios_command=(
-    "${grub_install_command[@]}"
+  local -ar grub_install_bios=(
+    "${grub_install[@]}"
     --target i386-pc
     "$1"
-  ) && "${grub_install_bios_command[@]}"
+  ) && "${grub_install_bios[@]}"
   # efi
-  local -ar grub_install_efi_command=(
-    "${grub_install_command[@]}"
+  local -ar grub_install_efi=(
+    "${grub_install[@]}"
     --target x86_64-efi
     --efi-directory "$2"
     --bootloader-id boot
     --no-nvram
-  ) && "${grub_install_efi_command[@]}"
+  ) && "${grub_install_efi[@]}"
   mv "$3"/{grubx64.efi,bootx64.efi} # default efi boot
 
   # cleanup grub's mess
   rmdir "$grub_directory"/locale || true
   rm "$grub_directory"/grubenv || true
 
-  cat "$(grub_config_base)" > "$grub_directory"/grub.cfg
+  cat "$(grub_configuration_header)" > "$grub_directory"/grub.cfg
   printf -- '%s\n' "$grub_prefix"/grub.cfg
 }
-declare -rf install_grub
+declare -rf grub
 
-build_checksum() { # create the checksum partition
+checksum() {
+  # create an encrypted checksum file
   local -r checksum_file=$(dirname "$2")/checksum.bin
   cat >> "$1/$2" << EOF
 function temporize {
@@ -111,42 +117,51 @@ EOF
   # directly use the tar file as the filesystem
   tar cf - -C "$tar_directory" . > /dev/mapper/"$checksum_device_mapper"
 }
-declare -rf build_checksum
+declare -rf checksum
 
-build_disk() {
+disk() {
   # format the disk
-  < <(format_disk "$1") readarray -t outputs
+  < <(format "$1") readarray -t outputs
   [ ${#outputs[@]} -eq 2 ]
 
   # format the efi/data partition
-  efi_format "${outputs[1]}"
+  format_efi "${outputs[1]}"
   local efi_filesystem_mount
-  read -r efi_filesystem_mount < <(mount_temporary "${outputs[1]}")
+  read -r efi_filesystem_mount < <(temporary_mount "${outputs[1]}")
   local -r efi_boot_directory=$efi_filesystem_mount/efi/boot
   mkdir -p "$efi_boot_directory"
 
   # install grub
   local grub_config
   read -r grub_config < \
-    <(install_grub "$1" "$efi_filesystem_mount" "$efi_boot_directory")
+    <(grub "$1" "$efi_filesystem_mount" "$efi_boot_directory")
 
-  # hooks that may install stuff
-  shopt -s nullglob
-  local -ar hooks=("$script_directory/${BASH_SOURCE[0]/.bash/.d}"/*.bash)
-  shopt -u nullglob
   local -r images_prefix=/images
   local -r images_directory=$efi_filesystem_mount$images_prefix
-  local -r debian_iso=${2:-}
   mkdir -p "$images_directory"
-  for hook in "${hooks[@]}"; do
-    . "$hook"
-  done
 
-  # finally, store all the checksums in an encrypted blob
-  build_checksum "$efi_filesystem_mount" "$grub_config"
+  # copy iso
+  if [ -f "${2:-}" ]; then
+    local -r debian_iso_path=$images_prefix/$(basename "$2")
+    cat "$(grub_configuration_debian_live "$debian_iso_path")" \
+      >> "$efi_filesystem_mount/$grub_config"
+    cp "$2" "$images_directory"
+  fi
+
+  # efi shell
+  local -r tianocore_shell_url='https://github.com/tianocore/edk2/raw/master/ShellBinPkg/UefiShell'
+  wget -O "$images_directory"/shellx64.efi "$tianocore_shell_url"/X64/Shell.efi
+  cat >> "$efi_filesystem_mount/$grub_config" << EOF
+menuentry 'EFI shell' {
+  chainloader "$images_prefix/shellx64.efi"
 }
-declare -rf build_disk
+EOF
 
-# --- execution ---------------------------------------------------------------
+  # finally, checksum everything
+  checksum "$efi_filesystem_mount" "$grub_config"
+}
+declare -rf disk
 
-build_disk "$1" "${2:-}"
+# --- execution ----------------------------------------------------------------
+
+disk "${1:-}" "${2:-debian.iso}"

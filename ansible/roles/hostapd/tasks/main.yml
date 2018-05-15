@@ -1,0 +1,73 @@
+- assert:
+    msg: hostapd_{bridged_interface,interface} must be set
+    that:
+      - hostapd_bridged_interface is defined
+      - hostapd_interface is defined
+
+- name: install hostapd dependencies
+  apt:
+    name:
+      - bridge-utils
+      - hostapd
+    state: latest
+
+# FIXME: it's masked...
+- name: enable hostapd
+  notify: restart hostapd
+  systemd:
+    name: hostapd
+    enabled: true
+    masked: false
+
+- name: enable hostapd
+  notify: restart hostapd
+  service:
+    name: hostapd
+    enabled: true
+    # https://github.com/ansible/ansible/issues/22303
+    use: service
+
+# FIXME: copy/paste from ovh
+- name: create /etc/network/interfaces.d
+  file:
+    path: /etc/network/interfaces.d
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: /etc/network/interfaces should source /etc/network/interfaces.d
+  lineinfile:
+    path: /etc/network/interfaces
+    line: source-directory /etc/network/interfaces.d
+    insertbefore: BOF
+    regexp: '^source-directory /etc/network/interfaces\.d$'
+    state: present
+
+- name: configure {{ hostapd_bridged_interface }} interface
+  template:
+    src: interface.j2
+    dest: /etc/network/interfaces.d/{{ hostapd_bridged_interface }}
+    mode: 0644
+    owner: root
+    group: root
+
+- name: up {{ hostapd_bridge }}
+  command: ifup {{ hostapd_bridge }}
+
+- name: copy hostapd.conf
+  notify: restart hostapd
+  template:
+    src: hostapd.conf.j2
+    dest: /etc/hostapd/hostapd.conf
+    mode: 0600
+    owner: root
+    group: root
+
+- name: setup hostapd
+  notify: restart hostapd
+  lineinfile:
+    path: /etc/default/hostapd
+    line: DAEMON_CONF="/etc/hostapd/hostapd.conf"
+    regexp: '^#?DAEMON_CONF='
+    state: present
