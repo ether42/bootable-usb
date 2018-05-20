@@ -1,0 +1,197 @@
+# I prefer to bind mount everything two times as it feels a bit less clunky
+# and /run is difficult to mount from the lxc configuration
+
+# there is also /dev/mem as a last resort
+- name: check video is available
+  stat:
+    path: /mnt/dev/dri
+    get_md5: no
+  register: dri
+
+- name: check input is available
+  stat:
+    path: /mnt/dev/input
+    get_md5: no
+  register: input
+
+- name: check kvm is available
+  stat:
+    path: /dev/kvm
+    get_md5: no
+  register: kvm
+
+- name: check tun is available
+  stat:
+    path: /mnt/dev/net
+    get_md5: no
+  register: net
+
+- name: check audio is available
+  stat:
+    path: /mnt/dev/snd
+    get_md5: no
+  register: snd
+
+- name: check console is available
+  stat:
+    path: /dev/{{ desktop_tty }}
+    get_md5: no
+  register: tty
+
+# udev doesn't work great from a container, expect some hacks
+- name: check udev is available
+  stat:
+    path: /mnt/run/udev
+    get_md5: no
+  register: udev
+
+- assert:
+    msg: invalid lxc configuration for a desktop, check {{ role_path }} for more information
+    that:
+      - dri.stat.isdir   is defined and dri.stat.isdir
+      - input.stat.isdir is defined and dri.stat.isdir
+      - kvm.stat.ischr   is defined and kvm.stat.ischr
+      - net.stat.isdir   is defined and net.stat.isdir
+      - snd.stat.isdir   is defined and dri.stat.isdir
+      - tty.stat.ischr   is defined and tty.stat.ischr
+      - udev.stat.isdir  is defined and udev.stat.isdir
+
+- name: setup fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ item }}"
+  with_items:
+    - /mnt/dev/dri   /dev/dri   none bind,create=dir
+    - /mnt/dev/input /dev/input none bind,create=dir
+    - /mnt/dev/net   /dev/net   none bind,create=dir
+    - /mnt/dev/snd   /dev/snd   none bind,create=dir
+    - /mnt/run/udev  /run/udev  none bind,create=dir
+
+- name: install x
+  apt:
+    name:
+      - xinit
+      # this is probably generic enough to be put there
+      - xserver-xorg-input-kbd
+      - xserver-xorg-input-mouse
+      # xrandr, xsetroot
+      - x11-xserver-utils
+      # setxkbmap
+      - x11-xkb-utils
+    state: latest
+
+- name: install firefox dependencies
+  apt:
+    name:
+      - libdbus-glib-1-2
+      - libgtk-3-0
+      - pulseaudio
+      # not a dependency per se, but nice to have
+      - pavucontrol
+
+- name: download firefox
+  # remove -devedition for regular
+  # https://addons.mozilla.org/en-US/firefox/addon/multi-account-containers/
+  # https://addons.mozilla.org/en-US/firefox/addon/ublock-origin/
+  # https://tools.google.com/dlpage/gaoptout
+  command: curl -L -o firefox.tar.bz2 https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=en-US
+  when: false
+
+# then you should probably copy it to /etc/X11/xorg.conf
+- name: generate default x configuration
+  command: Xorg -configure
+  when: false
+
+# example x invocation
+- name: invoke x
+  command: xinit firefox -- :0 {{ desktop_tty }}
+  when: false
+
+- name: create desktop user
+  user:
+    name: "{{ desktop_user }}"
+    shell: /bin/bash
+    groups: audio,video
+    append: yes
+
+- name: create /etc/X11/xorg.conf.d
+  file:
+    path: /etc/X11/xorg.conf.d
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+# /etc/X11/xorg.conf takes precedence over /etc/X11/xorg.conf.d/
+# if you don't hardcode the keyboard and mouse, udev events won't reach X once it's started
+- name: disable x hotplugging
+  copy:
+    dest: /etc/X11/xorg.conf.d/hotplugging.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        Section "ServerFlags"
+          Option "AutoAddDevices" "False"
+        EndSection
+
+- name: configure x keyboard
+  copy:
+    dest: /etc/X11/xorg.conf.d/keyboard.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        Section "InputDevice"
+          Identifier "Keyboard0"
+          Driver     "kbd"
+          Option     "XkbLayout" "us_intl"
+        EndSection
+
+- name: configure x mouse
+  copy:
+    dest: /etc/X11/xorg.conf.d/mouse.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        Section "InputDevice"
+          Identifier  "Mouse0"
+          Driver      "mouse"
+          Option      "Protocol" "auto"
+          Option      "Device" "/dev/input/mice"
+          Option      "ZAxisMapping" "4 5 6 7"
+        EndSection
+
+# so users can start it
+- name: set x root rights
+  lineinfile:
+    path: /etc/X11/Xwrapper.config
+    line: needs_root_rights=yes
+
+- name: enable getty@{{ desktop_tty }}
+  systemd:
+    name: getty@{{ desktop_tty }}
+    enabled: yes
+
+# for whatever reason, getty@.service has ConditionPathExists=/dev/tty0
+- name: create /etc/systemd/system/getty@{{ desktop_tty }}.service.d
+  file:
+    path: /etc/systemd/system/getty@{{ desktop_tty }}.service.d
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: override getty@{{ desktop_tty }}
+  copy:
+    dest: /etc/systemd/system/getty@{{ desktop_tty }}.service.d/override.conf
+    mode: 0644
+    owner: root
+    group: root
+    content: |
+        [Unit]
+        ConditionPathExists=
+
+- include_tasks: customize.yml
+  when: desktop_customize

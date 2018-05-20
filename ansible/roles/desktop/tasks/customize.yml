@@ -1,0 +1,35 @@
+# https://github.com/be5invis/Iosevka
+# https://github.com/jwilm/alacritty
+
+- name: install some stuff
+  apt:
+    name:
+      - bspwm
+      - dmenu
+      - emacs-nox
+      - git-core
+      - suckless-tools
+      - tmux
+    state: latest
+
+- name: clone dotfiles
+  git:
+    repo: https://github.com/ether42/dotfiles
+    dest: /home/{{ desktop_user }}/dotfiles
+    recursive: no
+
+- name: setup dotfiles
+  shell: mkdir -p "$(dirname /home/{{ desktop_user | quote }}/{{ item | quote }})" && ln -sf /home/{{ desktop_user | quote }}/dotfiles/{{ item | quote }} /home/{{ desktop_user | quote }}/{{ item | quote }}
+  args:
+    warn: false
+  with_items:
+    - .bash_profile
+    - .bashrc
+    - .config/bspwm
+    - .config/sxhkd
+    - .emacs
+    - .gitconfig
+    - .inputrc
+    - .tmux
+    - .tmux.conf
+    - .xinitrc
