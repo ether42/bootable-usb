@@ -1,0 +1,13 @@
+- name: install wireguard-dkms
+  apt:
+    name: wireguard-dkms
+    state: latest
+    install_recommends: false
+  when: wireguard_dkms
+
+- name: install wireguard-tools
+  apt:
+    name: wireguard-tools
+    state: latest
+    install_recommends: false
+  when: wireguard_tools

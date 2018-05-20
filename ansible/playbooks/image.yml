@@ -9,5 +9,7 @@
     - rdnssd
     - rsyslog-client
     - socat
+    - role: wireguard
+      wireguard_dkms: true
   vars:
     restart_services: false
