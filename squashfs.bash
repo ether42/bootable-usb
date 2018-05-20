@@ -36,6 +36,9 @@ hash mksquashfs
   # root password
   printf '%s\n' "${PASSWORD:-root}" "${PASSWORD:-root}" | passwd root
 
+  # clone this repository
+  git clone https://github.com/ether42/bootable-usb.git /root/git
+
   # persist some important files without persisting whole /etc
   # (this is bad practice as /etc could become out of sync with the
   # rest of the os, either union / or don't persist /etc)
@@ -130,9 +133,6 @@ debian() {
     mount --bind "$ssh_agent_directory" "$_"
 
   ansible-playbook -i "$chroot_directory", ansible/playbooks/image.yml
-  if hash git 2> /dev/null && [ -d "$script_directory"/.git ]; then
-    git clone "$script_directory" "$chroot_directory"/root/git
-  fi
   chroot "$chroot_directory" "$SHELL" -c customize
 
   umount "$chroot_directory"/"$ssh_agent_directory" && rmdir "$_"
